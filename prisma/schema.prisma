@@ -1,0 +1,226 @@
+// Prisma Schema for ScrollWorld Studio
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  DRAFT
+  GENERATING
+  READY
+  FAILED
+}
+
+enum SceneStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+enum ClipType {
+  DIVE
+  CONNECTOR
+  AMBIENT
+}
+
+enum ClipStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum JobType {
+  INTAKE
+  STILLS
+  DIVES
+  CONNECTORS
+  TRANSCODE
+  FULL_PIPELINE
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  DEBUG
+}
+
+model Brand {
+  id             String    @id @default(cuid())
+  name           String
+  url            String?
+  logoUrl        String?
+  primaryColor   String    @default("#6366f1")
+  secondaryColor String    @default("#a855f7")
+  accentColor    String    @default("#ec4899")
+  typography     String    @default("Inter, sans-serif")
+  toneOfVoice    String?
+  keywords       String[]  @default([])
+  industry       String?
+  projects       Project[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("brands")
+}
+
+model Project {
+  id                String          @id @default(cuid())
+  title             String
+  slug              String          @unique
+  description       String?
+  status            ProjectStatus   @default(DRAFT)
+  artStyle          String          @default("hyper-realistic")
+  cameraMotion      String          @default("forward-dive")
+  aspectRatio       String          @default("16:9")
+  dampingFactor     Float           @default(0.18)
+  lingerFactor      Float           @default(0.3)
+  scrollSensitivity Float           @default(1.0)
+  enableAudio       Boolean         @default(false)
+  audioUrl          String?
+  settings          Json?
+  metadata          Json?
+  
+  brandId           String?
+  brand             Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  scenes            Scene[]
+  generationJobs    GenerationJob[]
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+model Scene {
+  id              String       @id @default(cuid())
+  projectId       String
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  order           Int
+  title           String
+  subtitle        String?
+  description     String?
+  prompt          String
+  cameraMovement  String       @default("forward-dive")
+  focalPoint      String?
+  
+  stillPosterUrl  String?
+  stillPrompt     String?
+  knockoutUrl     String?
+  videoDesktopUrl String?
+  videoMobileUrl  String?
+  
+  diveScrollPx    Int          @default(1200)
+  lingerFactor    Float        @default(0.3)
+  duration        Float        @default(4.0)
+  status          SceneStatus  @default(PENDING)
+  
+  ctaText         String?
+  ctaUrl          String?
+  tags            String[]     @default([])
+  metadata        Json?
+
+  videoClips      VideoClip[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([projectId, order])
+  @@map("scenes")
+}
+
+model VideoClip {
+  id               String      @id @default(cuid())
+  sceneId          String
+  scene            Scene       @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  
+  type             ClipType    @default(DIVE)
+  resolution       String      @default("1080p")
+  aspectRatio      String      @default("16:9")
+  format           String      @default("mp4")
+  url              String
+  blobStoragePath  String?
+  duration         Float       @default(4.0)
+  
+  keyint           Int         @default(8)
+  crf              Int         @default(20)
+  
+  sourceStartFrame String?
+  sourceEndFrame   String?
+  
+  ssimScore        Float?
+  psnrScore        Float?
+  status           ClipStatus  @default(PENDING)
+  metadata         Json?
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([sceneId, type])
+  @@map("video_clips")
+}
+
+model GenerationJob {
+  id               String       @id @default(cuid())
+  projectId        String
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  type             JobType      @default(FULL_PIPELINE)
+  status           JobStatus    @default(PENDING)
+  currentStage     String       @default("PENDING")
+  progress         Float        @default(0.0)
+  
+  estimatedCostUsd Float        @default(0.0)
+  totalTokensUsed  Int          @default(0)
+  activeSceneIndex Int?
+  totalScenes      Int          @default(6)
+  previewUrl       String?
+  error            String?
+  
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  logs             JobLog[]
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([projectId, status])
+  @@index([createdAt])
+  @@map("generation_jobs")
+}
+
+model JobLog {
+  id        String        @id @default(cuid())
+  jobId     String
+  job       GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  level     LogLevel      @default(INFO)
+  stage     String
+  message   String
+  metadata  Json?
+  timestamp DateTime      @default(now())
+
+  @@index([jobId, timestamp])
+  @@map("job_logs")
+}
