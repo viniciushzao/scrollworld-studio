@@ -7,27 +7,24 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * POST /api/render/[id]
+ * Trigger full pipeline DAG video generation orchestration for a project
+ */
 export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
   try {
-    let id = "";
-    if (context?.params) {
-      const resolved = typeof (context.params as any)?.then === "function" 
-        ? await context.params 
-        : context.params;
-      id = resolved?.id || "";
-    }
-    if (!id) {
-      const parts = request.nextUrl.pathname.split("/").filter(Boolean);
-      id = parts[parts.length - 1] || "";
-    }
+    const resolvedParams = await context.params;
+    const id = resolvedParams?.id || request.nextUrl.pathname.split("/").filter(Boolean).pop() || "";
 
     let body = {};
     try {
       body = await request.json();
-    } catch {}
+    } catch {
+      // Body is optional
+    }
 
     const validatedData = RenderJobRequestSchema.parse(body);
 
