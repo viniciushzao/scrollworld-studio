@@ -20,13 +20,21 @@ import {
   Code2,
   Share2,
   Check,
+  ChevronDown,
+  Volume2,
+  VolumeX,
   Eye,
+  Maximize2,
+  Minimize2,
   Wand2,
   Compass,
+  ArrowRight,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
+// Real rendered assets from ByteDance Seedance 2.0 & Nano Banana
 const SAMSUNG_SCENES: SceneMedia[] = [
   {
     id: "scene_titanium_core",
@@ -86,6 +94,7 @@ export default function ExampleShowcasePage() {
   const [engineState, setEngineState] = useState<ScrubState | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Initialize ScrubEngine
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -96,12 +105,15 @@ export default function ExampleShowcasePage() {
       dampingFactor: dampingFactor,
       lingerEasePower: 3.0,
       debug: false,
-      onProgress: (p, sIdx) => {
+      onProgress: (p, sIdx, lProg) => {
         setGlobalProgress(p);
         setActiveSceneIndex(sIdx);
       },
       onSceneChange: (sIdx) => {
         setActiveSceneIndex(sIdx);
+      },
+      onReady: () => {
+        console.log("ScrubEngine initialized successfully with ByteDance Seedance 2.0 video!");
       },
     });
 
@@ -120,6 +132,7 @@ export default function ExampleShowcasePage() {
     };
   }, [mode, dampingFactor]);
 
+  // Auto-play / cinematic forward drift simulation
   useEffect(() => {
     if (!isAutoPlaying) return;
     const interval = setInterval(() => {
@@ -134,6 +147,7 @@ export default function ExampleShowcasePage() {
     return () => clearInterval(interval);
   }, [isAutoPlaying, globalProgress]);
 
+  // Mouse wheel scroll handler
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (!engineRef.current) return;
@@ -141,6 +155,7 @@ export default function ExampleShowcasePage() {
     engineRef.current.scrollBy(delta);
   }, []);
 
+  // Pointer drag handler
   const isDraggingRef = useRef(false);
   const dragStartY = useRef(0);
 
@@ -171,6 +186,7 @@ export default function ExampleShowcasePage() {
 
   return (
     <div className="min-h-screen bg-black text-white selection:bg-cyan-500/30 flex flex-col">
+      {/* Top Navigation Header */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-black/80 backdrop-blur-xl px-4 py-3 sm:px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -190,6 +206,7 @@ export default function ExampleShowcasePage() {
             </Badge>
           </div>
 
+          {/* Center Tabs */}
           <div className="flex items-center rounded-xl bg-zinc-900/90 p-1 border border-white/10">
             <button
               onClick={() => setActiveTab("preview")}
@@ -223,6 +240,7 @@ export default function ExampleShowcasePage() {
             </button>
           </div>
 
+          {/* Right Action Buttons */}
           <div className="flex items-center gap-2">
             <Link href="/studio">
               <Button size="sm" variant="glass" className="gap-2 text-xs rounded-xl border border-white/10">
@@ -234,9 +252,13 @@ export default function ExampleShowcasePage() {
         </div>
       </header>
 
+      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left / Main Column: Video Player Stage */}
         <div className="lg:col-span-8 flex flex-col gap-4">
+          {/* Viewport & Playback Controls Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-zinc-900/60 border border-white/10 backdrop-blur-md">
+            {/* Viewport Switcher */}
             <div className="flex items-center gap-1 rounded-xl bg-black/50 p-1 border border-white/5">
               <button
                 onClick={() => setMode("desktop")}
@@ -260,6 +282,7 @@ export default function ExampleShowcasePage() {
               </button>
             </div>
 
+            {/* Playback Simulation & Reset */}
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -293,6 +316,7 @@ export default function ExampleShowcasePage() {
             </div>
           </div>
 
+          {/* Interactive Player Canvas Wrapper */}
           <div
             className={cn(
               "relative mx-auto w-full transition-all duration-300 bg-zinc-950 rounded-3xl border border-white/10 overflow-hidden shadow-2xl shadow-cyan-950/20 group",
@@ -305,10 +329,13 @@ export default function ExampleShowcasePage() {
             onPointerLeave={handlePointerUp}
             style={{ cursor: "grab" }}
           >
+            {/* The ScrubEngine DOM Container */}
             <div ref={containerRef} className="absolute inset-0 w-full h-full" />
 
+            {/* In-Canvas Narrative Overlay Cards */}
             {showOverlays && (
               <div className="pointer-events-none absolute inset-0 z-30 flex flex-col justify-between p-6 md:p-8">
+                {/* Top Brand Pill */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 px-3.5 py-1.5 text-xs text-white">
                     <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
@@ -320,6 +347,7 @@ export default function ExampleShowcasePage() {
                   </div>
                 </div>
 
+                {/* Bottom Narrative Story Beat */}
                 <div className="max-w-md bg-black/75 backdrop-blur-2xl border border-white/15 rounded-2xl p-5 shadow-2xl transition-all duration-300">
                   <div className="flex items-center gap-2 text-cyan-400 text-xs font-mono uppercase tracking-wider mb-1">
                     <span>Scene {activeSceneIndex + 1} of {SAMSUNG_SCENES.length}</span>
@@ -331,7 +359,7 @@ export default function ExampleShowcasePage() {
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {currentScene.tags?.map((tag) => (
-                      <Badge key={tag} variant="glass" className="text-[10px] bg-white/10 text-zinc-200 border-white/10">
+                      <Badge key={tag} variant="outline" className="text-[10px] bg-white/10 text-zinc-200 border-white/10">
                         {tag}
                       </Badge>
                     ))}
@@ -340,6 +368,7 @@ export default function ExampleShowcasePage() {
               </div>
             )}
 
+            {/* Scrub Hint on Hover */}
             <div className="pointer-events-none absolute bottom-3 right-4 z-30 opacity-60 group-hover:opacity-100 transition-opacity">
               <span className="text-[11px] font-mono text-zinc-400 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
                 Gire o scroll do mouse ou arraste
@@ -347,6 +376,7 @@ export default function ExampleShowcasePage() {
             </div>
           </div>
 
+          {/* Interactive Scrub Progress Bar */}
           <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 space-y-2">
             <div className="flex items-center justify-between text-xs text-zinc-400 font-mono">
               <span>Linha do Tempo Espacial (0s → 4.04s)</span>
@@ -362,12 +392,20 @@ export default function ExampleShowcasePage() {
               onChange={(e) => engineRef.current?.scrollToProgress(parseFloat(e.target.value))}
               className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
             />
+
+            <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+              <span>Frame 0 (Start)</span>
+              <span>Frame 48 (Mid-Zoom)</span>
+              <span>Frame 97 (End-Drift)</span>
+            </div>
           </div>
         </div>
 
+        {/* Right Column: Controls, Telemetry & Code */}
         <div className="lg:col-span-4 flex flex-col gap-4">
           {activeTab === "preview" && (
             <div className="space-y-4 animate-in fade-in">
+              {/* Physics & Damping Card */}
               <Card className="p-5 rounded-2xl bg-zinc-900/70 border-white/10 space-y-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
                   <Sliders className="h-4 w-4 text-cyan-400" />
@@ -393,8 +431,18 @@ export default function ExampleShowcasePage() {
                     <span>Instantâneo (0.40)</span>
                   </div>
                 </div>
+
+                <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs text-zinc-300 space-y-1.5">
+                  <div className="font-semibold text-cyan-400 text-[11px] uppercase tracking-wider">Algoritmo em Execução:</div>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    • <strong>Seek Coalescing</strong>: Ignora seeks redundantes enquanto o decodificador de hardware estiver ocupado.<br />
+                    • <strong>In-Memory Blob Buffer</strong>: Elimina latência de rede em busca bidirecional.<br />
+                    • <strong>GOP 8 Keyframe Spacing</strong>: Quadros-chave a cada 8 frames garantem precisão instantânea de 16ms.
+                  </p>
+                </div>
               </Card>
 
+              {/* Story Sections Navigator */}
               <Card className="p-5 rounded-2xl bg-zinc-900/70 border-white/10 space-y-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
                   <Compass className="h-4 w-4 text-cyan-400" />
@@ -423,7 +471,7 @@ export default function ExampleShowcasePage() {
                         </div>
                         <div className="text-[10px] text-zinc-400 truncate max-w-[200px]">{scene.subtitle}</div>
                       </div>
-                      <Badge variant="glass" className="text-[9px] font-mono">
+                      <Badge variant="outline" className="text-[9px] font-mono">
                         {idx === 0 ? "0%" : idx === 1 ? "50%" : "100%"}
                       </Badge>
                     </button>
@@ -454,12 +502,21 @@ export default function ExampleShowcasePage() {
                 </div>
                 <div className="p-3 rounded-xl bg-black/50 border border-white/5">
                   <div className="text-zinc-400 text-[10px]">Active DOM Video Nodes:</div>
-                  <strong className="text-white font-mono">{engineState?.activeVideosInPool || 1} / 2</strong>
+                  <strong className="text-white font-mono">{engineState?.activeVideoCount || 1} / 2</strong>
                 </div>
                 <div className="p-3 rounded-xl bg-black/50 border border-white/5">
                   <div className="text-zinc-400 text-[10px]">Cache In-Memory:</div>
                   <strong className="text-white font-mono">2.10 MB Blob</strong>
                 </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-black/50 border border-white/5 space-y-2 font-mono text-[11px]">
+                <div className="text-zinc-400 text-[10px] uppercase">Detalhes da Mídia Renderizada:</div>
+                <div className="text-zinc-300">• Modelo: ByteDance Seedance 2.0</div>
+                <div className="text-zinc-300">• Resolução: 1920x1080 (1080p Full HD)</div>
+                <div className="text-zinc-300">• Preset de Encode: GOP 8 (-g 8 -keyint_min 8)</div>
+                <div className="text-zinc-300">• Taxa de Amostragem: 24 fps nativo / 60 fps interpolação</div>
+                <div className="text-zinc-300">• Arquivo Local: public/generated/videos/samsung_s26_desktop_gop8.mp4</div>
               </div>
             </Card>
           )}
