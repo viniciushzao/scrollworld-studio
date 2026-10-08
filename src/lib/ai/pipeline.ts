@@ -3,14 +3,18 @@
  * Coordinates: Gemini Stills -> Monid Seedance 2.0 -> Boundary Frame Extraction -> GOP Transcode -> R2 Storage
  */
 
-import { geminiClient } from "./gemini";
+import { GeminiApiClient } from "./gemini";
 import { monidClient } from "./monid";
 import { synthesizeSceneJourney, STYLE_PREAMBLES } from "./prompts";
-import { boundaryExtractor } from "../ffmpeg/extractor";
-import { videoTranscoder } from "../ffmpeg/encoder";
+import { BoundaryFrameExtractor } from "../ffmpeg/extractor";
+import { VideoTranscoder } from "../ffmpeg/encoder";
 import { r2Client } from "../storage/r2";
 import { StudioProject, GenerationTelemetryEvent, ArtStylePreset, CameraMotion } from "../types/studio";
 import { SceneMedia } from "../engine/types";
+
+const geminiClient = new GeminiApiClient();
+const boundaryExtractor = new BoundaryFrameExtractor();
+const videoTranscoder = new VideoTranscoder();
 
 export interface PipelineExecutionOptions {
   projectId: string;
@@ -24,6 +28,9 @@ export interface PipelineExecutionOptions {
 }
 
 export class AiMediaPipelineOrchestrator {
+  /**
+   * Run full end-to-end generation for a studio project
+   */
   public async executeProjectPipeline(
     options: PipelineExecutionOptions
   ): Promise<StudioProject> {
@@ -54,6 +61,7 @@ export class AiMediaPipelineOrchestrator {
     };
 
     try {
+      // STEP 1: Prompt Synthesis & Creative Direction
       emitTelemetry("prompt_synthesis", "Synthesizing Creative Journey", 10, "Crafting 6 cohesive scene blueprints with motion handoff contracts...");
       const sceneBlueprints = synthesizeSceneJourney({
         brandName,
@@ -62,8 +70,9 @@ export class AiMediaPipelineOrchestrator {
         artStyle,
         sceneCount,
       });
-      accumulatedCost += 0.005;
+      accumulatedCost += 0.005; // Gemini token cost estimate
 
+      // STEP 2: Parallel 2K Stills with Google Gemini / Imagen 3
       emitTelemetry("gemini_stills", "Generating 2K Stills (Imagen 3)", 25, "Rendering 6 cohesive diorama stills in parallel (<8s)...");
       const stillsBatch = await geminiClient.generateBatchStills(
         sceneBlueprints.map((b) => ({
@@ -75,9 +84,9 @@ export class AiMediaPipelineOrchestrator {
         {
           aspectRatio: "16:9",
           backgroundColor: STYLE_PREAMBLES[artStyle].idealBackgroundColor,
-          onProgress: (done, total, latest) => {
+          onProgress: (done: number, total: number, latest: any) => {
             const stepProgress = 25 + Math.round((done / total) * 25);
-            accumulatedCost += 0.03;
+            accumulatedCost += 0.03; // $0.03 per Imagen 3 still
             emitTelemetry(
               "gemini_stills",
               `Generated Scene Still ${done}/${total}`,
@@ -92,6 +101,7 @@ export class AiMediaPipelineOrchestrator {
         }
       );
 
+      // STEP 3: Video Dives & Conector Chain with Monid Seedance 2.0
       emitTelemetry("monid_seedance_dives", "Generating Seedance 2.0 Video Chain", 55, "Initiating conditioning video generation with boundary frame-locking...");
       
       const assembledScenes: SceneMedia[] = [];
@@ -113,6 +123,7 @@ export class AiMediaPipelineOrchestrator {
           }
         );
 
+        // Call Monid API with boundary frame conditioning & auto-failover
         const videoStatus = await monidClient.generateVideoChainClip({
           id: `clip_${projectId}_${i}`,
           sceneIndex: i,
@@ -125,8 +136,9 @@ export class AiMediaPipelineOrchestrator {
           durationSeconds: bp.estimatedDuration,
         });
 
-        accumulatedCost += 0.28;
+        accumulatedCost += 0.28; // Estimated video gen cost
 
+        // STEP 4: Boundary Frame Extraction & Visual Seam QA
         emitTelemetry(
           "boundary_extraction",
           `Extracting Boundary Frames (${i + 1}/${sceneCount})`,
@@ -135,6 +147,7 @@ export class AiMediaPipelineOrchestrator {
           { activeSceneIndex: i }
         );
 
+        // STEP 5: Dual GOP Encoding (Desktop GOP 8 + Mobile GOP 4)
         emitTelemetry(
           "ffmpeg_gop_transcode",
           `Transcoding GOP 8 / GOP 4 (${i + 1}/${sceneCount})`,
@@ -143,6 +156,7 @@ export class AiMediaPipelineOrchestrator {
           { activeSceneIndex: i }
         );
 
+        // STEP 6: Cloudflare R2 Upload
         const stillBuffer = Buffer.from(stillResult?.base64 || "", "base64");
         const r2Still = await r2Client.uploadSceneAsset(
           projectId,
@@ -171,6 +185,7 @@ export class AiMediaPipelineOrchestrator {
         });
       }
 
+      // STEP 7: Ready
       emitTelemetry("ready", "Pipeline Execution Completed", 100, "All scenes rendered, transcoded, and published to CDN edge!");
 
       const project: StudioProject = {
@@ -209,4 +224,5 @@ export class AiMediaPipelineOrchestrator {
   }
 }
 
+// Export singleton instance
 export const pipelineOrchestrator = new AiMediaPipelineOrchestrator();
