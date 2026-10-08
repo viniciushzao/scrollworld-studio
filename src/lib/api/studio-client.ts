@@ -23,6 +23,9 @@ export interface HealthCheckResponse {
 }
 
 export class StudioClient {
+  /**
+   * Run pre-flight health check before any generation
+   */
   static async checkSystemHealth(): Promise<HealthCheckResponse> {
     try {
       const res = await fetch("/api/health");
@@ -43,10 +46,14 @@ export class StudioClient {
     }
   }
 
+  /**
+   * Real AI generation pipeline with pre-flight check, intake, render orchestration, and SSE telemetry
+   */
   static async startGenerationPipeline(
     payload: CreateProjectPayload,
     onTelemetry: (event: GenerationTelemetryEvent) => void
   ): Promise<StudioProject> {
+    // 1. Pre-Flight Health Check
     const health = await this.checkSystemHealth();
     if (!health.healthy) {
       const issues = health.errors.length > 0 ? health.errors.join(" | ") : "One or more required services are unhealthy.";
@@ -66,6 +73,7 @@ export class StudioClient {
       totalScenes: sceneCount,
     });
 
+    // 2. Call POST /api/intake
     const intakeRes = await fetch("/api/intake", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -102,6 +110,7 @@ export class StudioClient {
       totalScenes: sceneCount,
     });
 
+    // 3. Trigger Render Orchestrator POST /api/render/[id]
     const renderRes = await fetch(`/api/render/${projectId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -122,6 +131,7 @@ export class StudioClient {
       throw new Error(renderData.error || renderData.details || "Falha ao iniciar o Render Orchestrator.");
     }
 
+    // 4. Stream real telemetry events via SSE (GET /api/sse/[id])
     return new Promise<StudioProject>((resolve, reject) => {
       const eventSource = new EventSource(`/api/sse/${jobId}`);
 
@@ -141,7 +151,7 @@ export class StudioClient {
           } else if (event.stage === "TRANSCODING") {
             stepName = "ffmpeg_gop_transcode";
           } else if (event.stage === "COMPLETED") {
-            stepName = "complete";
+            stepName = "ready";
           }
 
           onTelemetry({
@@ -159,6 +169,7 @@ export class StudioClient {
 
           if (event.stage === "COMPLETED") {
             eventSource.close();
+            // Fetch latest project state
             fetch(`/api/projects/${projectId}`)
               .then((res) => res.json())
               .then((p) => {
@@ -214,8 +225,9 @@ export class StudioClient {
         }
       };
 
-      eventSource.onerror = () => {
+      eventSource.onerror = (err) => {
         eventSource.close();
+        // Check project status in DB as fallback
         fetch(`/api/projects/${projectId}`)
           .then((res) => res.json())
           .then((p) => {
