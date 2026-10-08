@@ -23,7 +23,7 @@ async function handleIntake(request: NextRequest) {
           {
             success: false,
             error: "Security validation failed",
-            details: ssrfCheck.reason || "Invalid or blocked host (SSRF prevention).",
+            details: ssrfCheck.error || "Invalid or blocked host (SSRF prevention).",
           },
           { status: 400 }
         );
