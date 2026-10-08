@@ -1,6 +1,6 @@
 /**
  * ScrollWorld Studio Pipeline DAG & State Machine Orchestrator
- * Real execution engine coordinating Gemini 3.6 Flash, Nano Banana 2 Lite,
+ * Real execution engine coordinating Gemini 3.8 Flash, Nano Banana 2 Lite,
  * Monid ByteDance Seedance 2.0, and FFmpeg without simulations or mocks.
  */
 
@@ -26,6 +26,9 @@ class VideoPipelineOrchestrator {
     this.emitter.setMaxListeners(200);
   }
 
+  /**
+   * Subscribe to live telemetry events for a specific job
+   */
   public subscribe(
     jobId: string,
     listener: (event: PipelineProgressEvent) => void
@@ -37,6 +40,9 @@ class VideoPipelineOrchestrator {
     };
   }
 
+  /**
+   * Calculates COGS unit economics based on scene count and quality mode
+   */
   public calculateUnitEconomics(sceneCount: number, mode: "draft" | "production" = "production"): UnitEconomicsSummary {
     const stillsCost = Number((sceneCount * 0.03).toFixed(2));
     const divesCost = mode === "production"
@@ -60,6 +66,9 @@ class VideoPipelineOrchestrator {
     };
   }
 
+  /**
+   * Starts real pipeline execution job for a project
+   */
   public async startPipeline(
     projectId: string,
     options?: {
@@ -76,6 +85,7 @@ class VideoPipelineOrchestrator {
     const sceneCount = project.scenes?.length || 6;
     const job = await JobRepository.createJob(project.id, "FULL_PIPELINE", sceneCount);
     
+    // Update project status to GENERATING
     await ProjectRepository.update(project.id, { status: "GENERATING" as any });
 
     const payload: GenerationJobPayload = {
@@ -85,6 +95,7 @@ class VideoPipelineOrchestrator {
       aspectRatio: options?.aspectRatio || "16:9",
     };
 
+    // Run DAG asynchronously in background
     this.runDAG(payload, project).catch((err) => {
       console.error(`[Orchestrator] DAG Execution failed for job ${job.id}:`, err);
     });
@@ -97,6 +108,9 @@ class VideoPipelineOrchestrator {
     };
   }
 
+  /**
+   * Emits a telemetry event and persists logs/state
+   */
   private async emitProgress(
     payload: GenerationJobPayload,
     event: Omit<PipelineProgressEvent, "jobId" | "projectId" | "timestamp">
@@ -108,8 +122,10 @@ class VideoPipelineOrchestrator {
       timestamp: Date.now(),
     };
 
+    // Broadcast via EventEmitter for SSE
     this.emitter.emit(`job:${payload.jobId}`, fullEvent);
 
+    // Persist log and progress
     await JobRepository.appendLog(
       payload.jobId,
       event.error ? "ERROR" : "INFO",
@@ -130,6 +146,9 @@ class VideoPipelineOrchestrator {
     });
   }
 
+  /**
+   * The Master DAG State Machine Execution Loop (100% REAL)
+   */
   private async runDAG(payload: GenerationJobPayload, initialProject: DBProject) {
     const project = (await ProjectRepository.findByIdOrSlug(payload.projectId)) || initialProject;
     const scenes = project.scenes || [];
@@ -144,6 +163,9 @@ class VideoPipelineOrchestrator {
     const transcoder = new VideoTranscoder();
 
     try {
+      // -------------------------------------------------------------
+      // STAGE 1: STILLS_GENERATING (0% -> 28%)
+      // -------------------------------------------------------------
       await this.emitProgress(payload, {
         stage: "STILLS_GENERATING",
         stageTitle: "Nano Banana 2 Lite Stills",
@@ -194,10 +216,14 @@ class VideoPipelineOrchestrator {
         },
       });
 
+      // Save generated still URLs into project in DB
       await ProjectRepository.update(project.id, {
         scenes: scenes as any,
       });
 
+      // -------------------------------------------------------------
+      // STAGE 2: STILLS_READY (28% -> 32%)
+      // -------------------------------------------------------------
       await this.emitProgress(payload, {
         stage: "STILLS_READY",
         stageTitle: "Stills Cohesion Verified",
@@ -208,6 +234,9 @@ class VideoPipelineOrchestrator {
         message: "All 2K stills generated and verified for color harmonies and composition depth.",
       });
 
+      // -------------------------------------------------------------
+      // STAGE 3: DIVES_GENERATING (32% -> 60%)
+      // -------------------------------------------------------------
       const diveCostUnit = payload.mode === "production" ? 2.99 : 0.28;
       const diveVideos: string[] = [];
 
@@ -225,14 +254,15 @@ class VideoPipelineOrchestrator {
           activeSceneIndex: i,
           totalScenes: sceneCount,
           message: `[Monid Seedance 2.0] Submitting camera dive task for Scene ${i + 1}/${sceneCount}...`,
-          previewUrl: stillUrl,
+          previewUrl: stillUrl || undefined,
         });
 
+        // Prompt with motion handoff contract
         const handoffPrompt = `${scene.prompt || scene.title}. Single continuous cinematic camera move, no cuts. Settle into a slow, steady forward drift in the last second. Hyper-detailed, 60fps motion.`;
 
         const task = await monidClient.submitVideoTask({
           prompt: handoffPrompt,
-          startImageUrl: stillUrl,
+          startImageUrl: stillUrl || "",
           aspectRatio: payload.aspectRatio || "16:9",
           quality: payload.mode === "production" ? "1080p" : "720p",
           durationSeconds: scene.duration || 5,
@@ -248,13 +278,13 @@ class VideoPipelineOrchestrator {
             activeSceneIndex: i,
             totalScenes: sceneCount,
             message: `[Monid Seedance 2.0] Rendering Scene ${i + 1} (${percent}% complete)...`,
-            previewUrl: stillUrl,
+            previewUrl: stillUrl || undefined,
           });
         });
 
         currentCost = Number((currentCost + (completedTask.costUsd || diveCostUnit)).toFixed(2));
-        scene.videoDesktopUrl = completedTask.videoUrl;
-        diveVideos.push(completedTask.videoUrl);
+        scene.videoDesktopUrl = completedTask.videoUrl || "";
+        diveVideos.push(completedTask.videoUrl || "");
 
         await this.emitProgress(payload, {
           stage: "DIVES_GENERATING",
@@ -276,10 +306,14 @@ class VideoPipelineOrchestrator {
         });
       }
 
+      // Update project scenes in DB
       await ProjectRepository.update(project.id, {
         scenes: scenes as any,
       });
 
+      // -------------------------------------------------------------
+      // STAGE 4: BOUNDARIES_EXTRACTING (60% -> 72%)
+      // -------------------------------------------------------------
       await this.emitProgress(payload, {
         stage: "BOUNDARIES_EXTRACTING",
         stageTitle: "FFmpeg Boundary Frame Extraction",
@@ -311,6 +345,9 @@ class VideoPipelineOrchestrator {
         });
       }
 
+      // -------------------------------------------------------------
+      // STAGE 5: CONNECTORS_GENERATING (72% -> 86%)
+      // -------------------------------------------------------------
       const connectorCount = Math.max(0, sceneCount - 1);
       const isArchB = project.cameraMotion !== "continuous-walkthrough";
 
@@ -330,6 +367,7 @@ class VideoPipelineOrchestrator {
             message: `[Monid Seedance 2.0] Synthesizing seamless connector clip ${i + 1} -> ${i + 2}...`,
           });
 
+          // Upload extracted boundary frames to public frames folder
           const startFrameUpload = await monidClient.uploadToSfsWorkspace(
             fromBoundary.lastFrameBuffer,
             `boundary_last_${payload.jobId}_${i}.png`
@@ -355,6 +393,9 @@ class VideoPipelineOrchestrator {
         }
       }
 
+      // -------------------------------------------------------------
+      // STAGE 6: TRANSCODING (86% -> 96%)
+      // -------------------------------------------------------------
       await this.emitProgress(payload, {
         stage: "TRANSCODING",
         stageTitle: "FFmpeg GOP 8 / GOP 4 Transcoding",
@@ -371,6 +412,7 @@ class VideoPipelineOrchestrator {
           const rawVideoPath = path.join(process.cwd(), "public", scene.videoDesktopUrl);
           if (fs.existsSync(rawVideoPath)) {
             const transcoded = await transcoder.transcodeVideo(rawVideoPath, "desktop");
+            // Move/assign transcoded file
             const destName = `transcoded_desktop_${payload.jobId}_${i}.mp4`;
             const destPath = path.join(process.cwd(), "public", "generated", "videos", destName);
             if (fs.existsSync(transcoded.outputPath)) {
@@ -392,6 +434,9 @@ class VideoPipelineOrchestrator {
         });
       }
 
+      // -------------------------------------------------------------
+      // STAGE 7: COMPLETED (100%)
+      // -------------------------------------------------------------
       await ProjectRepository.update(project.id, {
         status: "READY" as any,
         scenes: scenes as any,
@@ -405,7 +450,7 @@ class VideoPipelineOrchestrator {
         estimatedCostUsd: currentCost,
         totalScenes: sceneCount,
         message: "Spatial World Generation Completed Successfully! Ready for interactive 60 FPS scrubbing.",
-        previewUrl: scenes[0]?.videoDesktopUrl || scenes[0]?.stillPosterUrl,
+        previewUrl: scenes[0]?.videoDesktopUrl || scenes[0]?.stillPosterUrl || undefined,
       });
 
     } catch (err: any) {
