@@ -40,7 +40,18 @@ export interface SystemHealthCheckResult {
   errors: string[];
 }
 
+let cachedResult: { data: SystemHealthCheckResult; status: number; expiresAt: number } | null = null;
+const CACHE_TTL_MS = 30000;
+
 export async function GET(request: NextRequest) {
+  const now = Date.now();
+  const url = new URL(request.url);
+  const forceRefresh = url.searchParams.get("fresh") === "true";
+
+  if (!forceRefresh && cachedResult && now < cachedResult.expiresAt) {
+    return NextResponse.json(cachedResult.data, { status: cachedResult.status });
+  }
+
   const errors: string[] = [];
   const timestamp = new Date().toISOString();
 
@@ -56,13 +67,19 @@ export async function GET(request: NextRequest) {
   } else {
     const t0 = Date.now();
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`;
+      const textModel = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${textModel}:generateContent?key=${geminiApiKey}`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: "ping" }] }],
-          generationConfig: { maxOutputTokens: 5 },
+          generationConfig: {
+            maxOutputTokens: 5,
+            thinkingConfig: {
+              thinkingLevel: "LOW",
+            },
+          },
         }),
       });
 
@@ -70,7 +87,7 @@ export async function GET(request: NextRequest) {
 
       if (res.ok) {
         geminiStatus = "healthy";
-        geminiMessage = `Google Gemini 3.6 Flash & Nano Banana 2 Lite online (${geminiLatency}ms).`;
+        geminiMessage = `Google Gemini (${textModel}) online (${geminiLatency}ms).`;
       } else {
         const errText = await res.text();
         geminiStatus = "unhealthy";
@@ -95,6 +112,7 @@ export async function GET(request: NextRequest) {
     errors.push(monidMessage);
   } else {
     try {
+      // Check Monid CLI balance
       const balanceProc = await new Promise<{ code: number; stdout: string }>((resolve) => {
         exec("monid balance", (err, stdout, stderr) => {
           if (err && !stdout) {
@@ -164,6 +182,7 @@ export async function GET(request: NextRequest) {
     if (!fs.existsSync(stillsDir)) fs.mkdirSync(stillsDir, { recursive: true });
     if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
 
+    // Test write
     const testFile = path.join(stillsDir, ".write_test");
     fs.writeFileSync(testFile, "ok");
     fs.unlinkSync(testFile);
@@ -188,7 +207,7 @@ export async function GET(request: NextRequest) {
     checks: {
       gemini: {
         status: geminiStatus,
-        textModel: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+        textModel: process.env.GEMINI_MODEL || "gemini-3.8-flash",
         imageModel: process.env.IMAGE_MODEL || "gemini-3.1-flash-lite-image",
         message: geminiMessage,
         latencyMs: geminiLatency,
@@ -218,5 +237,12 @@ export async function GET(request: NextRequest) {
     errors,
   };
 
-  return NextResponse.json(result, { status: isAllHealthy ? 200 : 503 });
+  const responseStatus = isAllHealthy ? 200 : 503;
+  cachedResult = {
+    data: result,
+    status: responseStatus,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  };
+
+  return NextResponse.json(result, { status: responseStatus });
 }
