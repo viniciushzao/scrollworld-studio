@@ -16,7 +16,7 @@ import {
 import { ArtStylePreset, CameraMotion } from "../types/studio";
 import { IntakeRequestInput } from "../types/api";
 
-export const DEFAULT_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+export const DEFAULT_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 export const DEFAULT_IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-3.1-flash-lite-image";
 
 export interface GeneratedBrandAnalysis {
@@ -172,7 +172,8 @@ export class GeminiApiClient {
       const publicUrl = `/generated/stills/${fileName}`;
 
       const resItem: StillGenerationResult = {
-        id: req.id || `still-${i}`,\n        index: i,
+        id: req.id || `still-${i}`,
+        index: i,
         still: {
           url: publicUrl,
           filePath,
@@ -260,7 +261,9 @@ Output JSON ONLY:
       contents: [{ parts: [{ text: promptText }] }],
       generationConfig: {
         responseMimeType: "application/json",
-        temperature: 0.7,
+        thinkingConfig: {
+          thinkingLevel: "LOW",
+        },
       },
     }),
   });
@@ -268,7 +271,7 @@ Output JSON ONLY:
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      `[Google Gemini 3.6 Flash] API returned HTTP status ${response.status}: ${errorText}`
+      `[Google Gemini] API returned HTTP status ${response.status}: ${errorText}`
     );
   }
 
@@ -282,13 +285,13 @@ Output JSON ONLY:
   try {
     let cleaned = rawText.trim();
     if (cleaned.startsWith("```json")) {
-      cleaned = cleaned.replace(/^```json\\s*/, "").replace(/\\s*```$/, "");
+      cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "");
     } else if (cleaned.startsWith("```")) {
-      cleaned = cleaned.replace(/^```\\s*/, "").replace(/\\s*```$/, "");
+      cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
     }
     parsed = JSON.parse(cleaned);
   } catch {
-    const jsonMatch = rawText.match(/\\{[\\s\\S]*\\}/);
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
         parsed = JSON.parse(jsonMatch[0]);
@@ -338,5 +341,3 @@ Output JSON ONLY:
     executionMode: "live_gemini",
   };
 }
-
-export const geminiClient = new GeminiApiClient();
